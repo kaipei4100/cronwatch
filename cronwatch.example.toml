@@ -1,0 +1,44 @@
+# cronwatch example configuration
+# Copy to cronwatch.toml and customise.
+
+# Path to the SQLite database used for heartbeat storage.
+db_path = "cronwatch.db"
+
+# How often (seconds) the checker loop wakes up to evaluate jobs.
+check_interval_seconds = 60
+
+# ---------------------------------------------------------------------------
+# Monitored cron jobs
+# ---------------------------------------------------------------------------
+# Each [[jobs]] entry must have:
+#   name       - unique human-readable identifier
+#   expression - standard 5-field cron expression
+#   grace_seconds (optional, default 300) - how long after the expected run
+#                time before the job is considered overdue
+
+[[jobs]]
+name = "daily-backup"
+expression = "0 2 * * *"   # every day at 02:00
+grace_seconds = 600
+
+[[jobs]]
+name = "hourly-sync"
+expression = "0 * * * *"   # every hour
+grace_seconds = 300
+
+[[jobs]]
+name = "weekly-report"
+expression = "0 9 * * 1"   # every Monday at 09:00
+grace_seconds = 1800
+
+# ---------------------------------------------------------------------------
+# SMTP alert settings (optional — omit section to disable email alerts)
+# ---------------------------------------------------------------------------
+[smtp]
+host = "smtp.example.com"
+port = 587
+username = "alerts@example.com"
+password = "changeme"
+sender = "cronwatch <alerts@example.com>"
+recipients = ["ops-team@example.com"]
+use_tls = true
