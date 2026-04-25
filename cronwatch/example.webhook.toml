@@ -1,0 +1,20 @@
+# cronwatch — example config with webhook alerting
+
+check_interval = 60
+db_path = "cronwatch.db"
+
+[webhook]
+url = "https://hooks.example.com/cronwatch"
+timeout = 10
+secret = "s3cr3t-token"
+
+[webhook.headers]
+X-Source = "cronwatch"
+
+[jobs.daily-backup]
+schedule = "0 2 * * *"
+grace_seconds = 600
+
+[jobs.hourly-sync]
+schedule = "0 * * * *"
+grace_seconds = 120

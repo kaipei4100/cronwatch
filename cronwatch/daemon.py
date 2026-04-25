@@ -1,60 +1,60 @@
-"""Main daemon loop that ties together scheduling, checking, and notification."""
+"""Cronwatch daemon — periodically checks for overdue jobs and fires alerts."""
+
+from __future__ import annotations
 
 import logging
 import signal
 import time
-from pathlib import Path
 from typing import Optional
 
 from cronwatch.checker import OverdueChecker
-from cronwatch.config import AppConfig, load_config
+from cronwatch.config import AppConfig
 from cronwatch.notifier import Notifier
 from cronwatch.store import HeartbeatStore
+from cronwatch.webhook import WebhookNotifier
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class Daemon:
-    """Runs the cronwatch monitoring loop."""
-
-    def __init__(self, config: AppConfig, store: HeartbeatStore) -> None:
-        self.config = config
-        self.store = store
-        self.notifier: Optional[Notifier] = (
-            Notifier(config.smtp) if config.smtp else None
-        )
-        self.checker = OverdueChecker(store)
+    def __init__(
+        self,
+        cfg: AppConfig,
+        store: HeartbeatStore,
+        notifier: Optional[Notifier] = None,
+        webhook: Optional[WebhookNotifier] = None,
+    ) -> None:
+        self._cfg = cfg
+        self._store = store
+        self._notifier = notifier
+        self._webhook = webhook
         self._running = False
 
     def start(self) -> None:
-        """Enter the main polling loop."""
+        log.info("Cronwatch daemon starting (interval=%ds).", self._cfg.check_interval)
         self._running = True
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
-        logger.info("cronwatch daemon started (poll_interval=%ds)", self.config.poll_interval)
         while self._running:
             self._tick()
-            time.sleep(self.config.poll_interval)
-        logger.info("cronwatch daemon stopped")
+            time.sleep(self._cfg.check_interval)
 
     def _tick(self) -> None:
-        reports = self.checker.check(self.config.jobs)
-        if reports:
-            logger.warning("%d overdue job(s) detected", len(reports))
-            for r in reports:
-                logger.warning("  %s", r)
-            if self.notifier:
-                self.notifier.send(reports)
-        else:
-            logger.debug("All jobs on schedule")
+        checker = OverdueChecker(self._cfg.jobs, self._store)
+        reports = checker.check_all()
+        if not reports:
+            log.debug("All jobs on time.")
+            return
+        for r in reports:
+            log.warning("%s", r)
+        if self._notifier:
+            self._notifier.send(reports)
+        if self._webhook:
+            self._webhook.send(reports)
 
     def _handle_signal(self, signum: int, _frame: object) -> None:
-        logger.info("Received signal %d, shutting down", signum)
+        log.info("Signal %d received — stopping.", signum)
         self._running = False
 
-
-def run_daemon(config_path: Path) -> None:
-    """Convenience entry-point used by the CLI."""
-    cfg = load_config(config_path)
-    store = HeartbeatStore(cfg.db_path)
-    Daemon(cfg, store).start()
+    def stop(self) -> None:
+        self._running = False
